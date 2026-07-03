@@ -1,0 +1,26 @@
+# Rust
+/target
+/Cargo.lock.bak
+
+# Models (multi-GB, fetched separately from HuggingFace)
+/models
+
+# Large benchmark fixtures (the small ones in tests/fixtures stay)
+*.bin
+
+# Editor/OS
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+
+# Logs / autotune cache
+*.log
+/autotune
+
+# Test audio / output (local-only, regenerated)
+*.wav
+*.mp3
+*.opus
+*.txt

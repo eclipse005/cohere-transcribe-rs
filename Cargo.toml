@@ -1,0 +1,48 @@
+[package]
+name = "native-transcribe"
+version = "0.1.0"
+edition = "2024"
+description = "Hand-written cudarc + cuBLAS + NVRTC CUDA engine for Cohere ASR (sm_61+). Targets higher RTFx than the candle baseline."
+
+[lib]
+name = "native_transcribe"
+path = "src/lib.rs"
+
+[[bin]]
+name = "native-transcribe"
+path = "src/main.rs"
+
+[features]
+default = ["cuda"]
+# f16 weight storage + cuBLAS compute (hgemm = f16 storage / f32 accumulate on
+# sm_61). Hand-written elementwise/fusion kernels accumulate in f32. The CPU
+# backend (`CpuBackend`) is always compiled and runs the same generic forward
+# via the `gemm` crate (AVX2/FMA, rayon); select it with `--device cpu`.
+cuda = ["dep:cudarc"]
+
+[dependencies]
+# cudarc pinned to 0.19 (same minor as candle-core 0.10.2 -> 0.19.4 in the
+# unified Cargo.lock). Features match qwen3-asr: cublas GEMM, half::f16,
+# build-system-detected CUDA version pinned to 12.8 (matches nvcc 12.8 on host).
+cudarc = { version = "0.19", features = ["cublas", "f16", "driver", "nvrtc", "cuda-version-from-build-system", "cuda-12080"], optional = true }
+# half is unconditional: weights are always stored as f16 on the host side
+# (raw_tensor.rs) regardless of whether the CUDA compute path is compiled in.
+half = "2"
+# safetensors for parsing the mmap'd checkpoint header (host-side, no torch dep).
+safetensors = "0.6"
+# Zero-copy mmap + refcounted slice for safetensors weights.
+memmap2 = "0.9"
+bytes = "1.11"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4.5", features = ["derive"] }
+gemm = { version = "0.19", features = ["rayon", "f16"] }
+# Pure-Rust audio/features/tokenizer (self-contained, no parent dep)
+hound = "3.5"
+rustfft = "6.4"
+prost = "0.14"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
+
+[dev-dependencies]
+tempfile = "3"
