@@ -2,7 +2,7 @@
 name = "native-transcribe"
 version = "0.1.0"
 edition = "2024"
-description = "Hand-written cudarc + cuBLAS + NVRTC CUDA engine for Cohere ASR (sm_61+). Targets higher RTFx than the candle baseline."
+description = "Rust inference engine for Cohere Transcribe (2B). Hand-written CUDA + CPU backends, zero DL framework dependency."
 
 [lib]
 name = "native_transcribe"
