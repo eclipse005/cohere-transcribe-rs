@@ -1,16 +1,9 @@
-//! NVRTC kernel registry.
+//! Precompiled multi-arch PTX kernel registry (scheme B).
 //!
-//! The CUDA source (`kernels.cu`) is embedded via `include_str!` and compiled
-//! to PTX at engine init, targeted at the runtime compute capability (sm_61 on
-//! the P104-100). Every kernel function is loaded once into a `CudaFunction`
-//! and held in `CudaKernels` for the process lifetime.
-//!
-//! This struct starts empty and gains a field per kernel as Stage 3/4 fill in
-//! `kernels.cu`. The `load_all` function is the single place to update when a
-//! new kernel is added.
-
-/// The embedded CUDA source, compiled at runtime by NVRTC.
-pub const KERNEL_SRC: &str = include_str!("kernels.cu");
+//! CUDA kernels are compiled offline (`scripts/compile-ptx.ps1`) and embedded
+//! via [`crate::prebuilt_ptx`]. At engine init we select the highest prebuilt
+//! arch ≤ the device compute capability and load the module with the CUDA
+//! driver — no NVRTC on the end-user machine.
 
 #[cfg(feature = "cuda")]
 mod inner {
@@ -57,37 +50,27 @@ mod inner {
     }
 
     impl CudaKernels {
-        /// Compile `KERNEL_SRC` for the given context's compute capability and
-        /// load every kernel function into a fresh `CudaKernels`.
+        /// Load precompiled PTX for this device's compute capability and
+        /// bind every kernel function into a fresh `CudaKernels`.
         pub fn load_all(
             ctx: &std::sync::Arc<cudarc::driver::safe::CudaContext>,
         ) -> anyhow::Result<Self> {
-            use cudarc::nvrtc::compile_ptx_with_opts;
-            use cudarc::nvrtc::CompileOptions;
+            use cudarc::nvrtc::Ptx;
 
-            // Resolve $CUDA_PATH/include for NVRTC headers (cuda_fp16.h, etc.).
-            let cuda_include = std::env::var("CUDA_PATH")
-                .map(|p| format!("{}/include", p))
-                .unwrap_or_else(|_| "/usr/local/cuda/include".to_string());
-
-            // Target the device's native arch for best codegen (sm_61 here).
-            let arch: Option<&'static str> =
-                ctx.compute_capability().ok().and_then(|(major, minor)| {
-                    // Leak the arch string — runs once at init, ~8 bytes is negligible.
-                    Some(&*Box::leak(format!("sm_{}{}", major, minor).into_boxed_str()))
-                });
-
-            let opts = CompileOptions {
-                arch,
-                include_paths: vec![cuda_include],
-                ..Default::default()
-            };
-            let ptx = compile_ptx_with_opts(super::KERNEL_SRC, opts)
-                .map_err(|e| anyhow::anyhow!("NVRTC kernel compile failed: {e:?}"))
-                .context("compiling kernels.cu")?;
+            let (major, minor) = ctx
+                .compute_capability()
+                .map_err(|e| anyhow::anyhow!("failed to query compute capability: {e:?}"))?;
+            let (ptx_src, selected_sm) = crate::prebuilt_ptx::resolve_ptx_for_device(major, minor)
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            log::info!(
+                "loading prebuilt CUDA kernels for device sm_{}{} (selected sm_{})",
+                major,
+                minor,
+                selected_sm
+            );
             let module = ctx
-                .load_module(ptx)
-                .context("loading compiled PTX module")?;
+                .load_module(Ptx::from_src(ptx_src))
+                .context("loading prebuilt PTX module")?;
 
             let load_fn = |name: &str| {
                 module

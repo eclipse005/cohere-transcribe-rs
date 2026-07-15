@@ -1,10 +1,10 @@
-//! Hand-written cudarc + cuBLAS + NVRTC CUDA engine for Cohere ASR.
+//! Hand-written cudarc + cuBLAS CUDA engine for Cohere ASR.
 //!
-//! Bypasses candle entirely. Weights are f16-resident on the device; matrix
-//! products go through cuBLAS `hgemm` (f16 storage / f32 accumulate — ≈ FP32
-//! throughput on sm_61, since GP104 consumer Pascal has only 1/64-rate native
-//! f16 ALUs but cuBLAS accumulates in fp32). Elementwise and fusion kernels
-//! accumulate in f32.
+//! Kernels ship as precompiled multi-arch PTX (scheme B) — no NVRTC at
+//! runtime. Weights are f16-resident on the device; matrix products go through
+//! cuBLAS `hgemm` (f16 storage / f32 accumulate — ≈ FP32 throughput on sm_61,
+//! since GP104 consumer Pascal has only 1/64-rate native f16 ALUs but cuBLAS
+//! accumulates in fp32). Elementwise and fusion kernels accumulate in f32.
 //!
 //! The three RTFx levers over the candle baseline, in order of impact on this
 //! GPU (P104-100, sm_61):
@@ -22,6 +22,8 @@
 
 pub mod backend;
 pub mod kernels;
+#[cfg(feature = "cuda")]
+pub mod prebuilt_ptx;
 pub mod raw_tensor;
 pub mod weights;
 pub mod audio;
